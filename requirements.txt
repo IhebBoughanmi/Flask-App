@@ -1,2 +1,5 @@
 flask
 gunicorn
+newspaper3k
+deep-translator
+lxml

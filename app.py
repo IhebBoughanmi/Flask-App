@@ -1,30 +1,34 @@
-!pip install newspaper3k deep-translator
-!pip install lxml[html_clean]
-
+from flask import Flask, request, jsonify
 from newspaper import Article
 from deep_translator import GoogleTranslator
 from html import escape
+import os
 
-def extraire_et_traduire_en_html(
-    url,
-    langue_source='auto',
-    langue_cible='ar',
-    nom_fichier_html="traduction_article.html"
-):
+app = Flask(__name__)
 
-    article = Article(url)
-    article.download()
-    article.parse()
+@app.route('/translate', methods=['POST'])
+def translate_article():
+    data = request.get_json()
+    url = data.get('url')
+    lang_from = data.get('lang_from', 'auto')
+    lang_to = data.get('lang_to', 'ar')
 
-    titre_original = article.title.strip()
-    texte_original = article.text.strip()
-    paragraphes = [p.strip() for p in texte_original.split('\n') if p.strip()]
+    if not url:
+        return jsonify({"error": "Missing 'url' parameter"}), 400
 
-    html = f"""<!DOCTYPE html>
-<html lang="{langue_cible}">
+    try:
+        article = Article(url)
+        article.download()
+        article.parse()
+
+        title = article.title.strip()
+        paragraphs = [p.strip() for p in article.text.split('\n') if p.strip()]
+
+        html = f"""<!DOCTYPE html>
+<html lang="{lang_to}">
 <head>
     <meta charset="UTF-8">
-    <title>Traduction de l'article</title>
+    <title>{escape(title)}</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, sans-serif;
@@ -49,27 +53,42 @@ def extraire_et_traduire_en_html(
     </style>
 </head>
 <body>
-    <h1>{escape(titre_original)}</h1>
+    <h1>{escape(title)}</h1>
 """
 
-    for i, p in enumerate(paragraphes):
-        try:
-            traduction = GoogleTranslator(source=langue_source, target=langue_cible).translate(p)
-            html += f"<p>{escape(traduction)}</p>\n"
-        except Exception as e:
-            print(f"Erreur à la traduction du paragraphe {i+1} : {e}")
-            html += f'<p class="original">[NON TRADUIT] {escape(p)}</p>\n'
+        for i, p in enumerate(paragraphs):
+            try:
+                translated = GoogleTranslator(source=lang_from, target=lang_to).translate(p)
+                html += f"<p>{escape(translated)}</p>\n"
+            except Exception as e:
+                html += f'<p class="original">[NON TRADUIT] {escape(p)}</p>\n'
 
-    html += """
-</body>
-</html>
-"""
+        html += "</body></html>"
 
-    with open(nom_fichier_html, 'w', encoding='utf-8') as fichier:
-        fichier.write(html)
+        # Save file
+        output_path = f"/tmp/translated_article.html"
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(html)
 
-    print(f" Fichier HTML généré : {nom_fichier_html}")
+        return jsonify({
+            "message": "Translation completed",
+            "download_url": request.host_url + "download"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-url_article = "https://www.weforum.org/stories/2025/03/ai-healthcare-strategy-speed/"
-extraire_et_traduire_en_html(url_article, nom_fichier_html="traduction_sante_ai.html")
+@app.route('/download', methods=['GET'])
+def download_translated_file():
+    try:
+        with open("/tmp/translated_article.html", "r", encoding="utf-8") as f:
+            return f.read(), 200, {
+                'Content-Type': 'text/html; charset=utf-8'
+            }
+    except Exception as e:
+        return jsonify({"error": "No file found. Translate something first."}), 404
+
+
+if __name__ == '__main__':
+    app.run()

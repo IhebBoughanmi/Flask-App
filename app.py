@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify
+import nltk
+nltk.download('punkt')
 from newspaper import Article
 from deep_translator import GoogleTranslator
 from html import escape

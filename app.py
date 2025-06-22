@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from readability import Document
 import requests
 from html import escape
@@ -9,26 +9,38 @@ app = Flask(__name__)
 
 def extract_main_article(url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0'
+        }
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+        original_html = response.text
+        soup_original = BeautifulSoup(original_html, 'html.parser')
 
-        # Extract title
-        title = ''
-        meta_title = soup.find('meta', property='og:title')
+        # Extract the best title candidate
+        article_title = ""
+        meta_title = soup_original.find('meta', property='og:title')
         if meta_title and meta_title.get('content'):
-            title = meta_title['content']
-        elif soup.find('title'):
-            title = soup.find('title').get_text().strip()
+            article_title = meta_title['content']
+        elif soup_original.find('title'):
+            article_title = soup_original.find('title').get_text().strip()
+        elif soup_original.find('h1'):
+            article_title = soup_original.find('h1').get_text().strip()
 
-        # Extract readable content
-        readable_article = Document(response.text)
-        content_html = readable_article.summary()
-        content_soup = BeautifulSoup(content_html, 'html.parser')
-        paragraphs = [p.get_text().strip() for p in content_soup.find_all('p') if p.get_text().strip()]
+        # Extract the main content
+        doc = Document(original_html)
+        main_content = doc.summary()
+        soup_main = BeautifulSoup(main_content, 'html.parser')
 
-        return title, paragraphs
+        # Insert raw title as <h1>
+        if article_title:
+            title_tag = soup_main.new_tag('h1')
+            title_tag.string = article_title
+            soup_main.insert(0, title_tag)
+
+        paragraphs = [p.get_text().strip() for p in soup_main.find_all('p') if p.get_text().strip()]
+        return article_title, paragraphs
+
     except Exception as e:
         raise RuntimeError(f"Failed to extract article: {str(e)}")
 
@@ -46,11 +58,14 @@ def translate_article():
     try:
         title, paragraphs = extract_main_article(url)
 
+        # Translate the title
+        translated_title = GoogleTranslator(source=lang_from, target=lang_to).translate(title)
+
         html = f"""<!DOCTYPE html>
 <html lang="{lang_to}">
 <head>
     <meta charset="UTF-8">
-    <title>{escape(title)}</title>
+    <title>{escape(translated_title)}</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, sans-serif;
@@ -75,7 +90,7 @@ def translate_article():
     </style>
 </head>
 <body>
-    <h1>{escape(title)}</h1>
+    <h1>{escape(translated_title)}</h1>
 """
 
         for p in paragraphs:

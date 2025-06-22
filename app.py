@@ -1,13 +1,37 @@
 from flask import Flask, request, jsonify
-import nltk
-nltk.download('punkt')
-from newspaper import Article
-from deep_translator import GoogleTranslator
+from bs4 import BeautifulSoup
+from readability import Document
+import requests
 from html import escape
-import os
-
+from deep_translator import GoogleTranslator
 
 app = Flask(__name__)
+
+def extract_main_article(url):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Extract title
+        title = ''
+        meta_title = soup.find('meta', property='og:title')
+        if meta_title and meta_title.get('content'):
+            title = meta_title['content']
+        elif soup.find('title'):
+            title = soup.find('title').get_text().strip()
+
+        # Extract readable content
+        readable_article = Document(response.text)
+        content_html = readable_article.summary()
+        content_soup = BeautifulSoup(content_html, 'html.parser')
+        paragraphs = [p.get_text().strip() for p in content_soup.find_all('p') if p.get_text().strip()]
+
+        return title, paragraphs
+    except Exception as e:
+        raise RuntimeError(f"Failed to extract article: {str(e)}")
+
 
 @app.route('/translate', methods=['POST'])
 def translate_article():
@@ -20,12 +44,7 @@ def translate_article():
         return jsonify({"error": "Missing 'url' parameter"}), 400
 
     try:
-        article = Article(url)
-        article.download()
-        article.parse()
-
-        title = article.title.strip()
-        paragraphs = [p.strip() for p in article.text.split('\n') if p.strip()]
+        title, paragraphs = extract_main_article(url)
 
         html = f"""<!DOCTYPE html>
 <html lang="{lang_to}">
@@ -59,18 +78,16 @@ def translate_article():
     <h1>{escape(title)}</h1>
 """
 
-        for i, p in enumerate(paragraphs):
+        for p in paragraphs:
             try:
                 translated = GoogleTranslator(source=lang_from, target=lang_to).translate(p)
                 html += f"<p>{escape(translated)}</p>\n"
-            except Exception as e:
+            except Exception:
                 html += f'<p class="original">[NON TRADUIT] {escape(p)}</p>\n'
 
         html += "</body></html>"
 
-        # Save file
-        output_path = f"/tmp/translated_article.html"
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open("/tmp/translated_article.html", "w", encoding="utf-8") as f:
             f.write(html)
 
         return jsonify({
@@ -89,9 +106,9 @@ def download_translated_file():
             return f.read(), 200, {
                 'Content-Type': 'text/html; charset=utf-8'
             }
-    except Exception as e:
+    except:
         return jsonify({"error": "No file found. Translate something first."}), 404
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)

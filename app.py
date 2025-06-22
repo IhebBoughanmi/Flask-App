@@ -5,6 +5,9 @@ from newspaper import Article
 from deep_translator import GoogleTranslator
 from html import escape
 import os
+from flask_cors import CORS
+CORS(app)
+
 
 app = Flask(__name__)
 

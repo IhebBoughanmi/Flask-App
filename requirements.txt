@@ -4,7 +4,6 @@ newspaper3k
 deep-translator
 lxml
 lxml-html-clean
-flask-cors
 
 
 

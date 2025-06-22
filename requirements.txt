@@ -4,3 +4,14 @@ newspaper3k
 deep-translator
 lxml
 lxml-html-clean
+flask-cors
+
+
+
+
+
+Warning about sealing (submit) the application
+Attention in order for your application to be complete and can be processed by the services, you must attach the necessary documents and seal your application after.
+During the application period you can change the information related to this application, as long as the application is not sealed (completed). You can also delete it at any time until the start of the classification process.
+After sealing the application, you will have access to the payment details. The payment must be made up to 14-07-2025.
+Your application can only be analysed after it is paid.
